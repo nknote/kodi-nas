@@ -1,0 +1,32 @@
+#!/bin/bash
+# RCLONE UPLOAD CRON TAB SCRIPT
+
+if pidof -o %PPID -x "rclone-upload.cron"; then
+   exit 1
+fi
+
+LOGFILE="/home/kodi/logs/rclone-upload.log"
+FROM="/mnt/gdlocal"
+TO="eddy:"
+
+# CHECK FOR FILES IN OTHERS FOLDER THAT ARE OLDER THEN 4 HOURS
+if find $FROM/* -not \( -path $FROM/Uploads -prune \) -not \( -path $FROM/Local -prune \) -type f -mmin +240 | read
+  then
+  echo "$(date "+%d.%m.%Y %T") RCLONE DATA UPLOAD STARTED" | tee -a $LOGFILE
+  # MOVE FILES OLDER THEN 4 HOURS
+  /usr/sbin/rclone move $FROM/ $TO/ -c \
+        --no-traverse \
+        --transfers=3 \
+        --checkers=3 \
+        --delete-after \
+        --min-age 240m \
+        --exclude=.unionfs-fuse/** \
+        --exclude=Uploads/** \
+        --exclude=Local/** \
+        --bwlimit 6M \
+        --log-file=$LOGFILE
+  echo "$(date "+%d.%m.%Y %T") RCLONE DATA UPLOAD ENDED" | tee -a $LOGFILE
+  # DELETE EMPTY FOLDERS (NOT INCLUDED HIDDEN)
+  find $FROM/* -depth -empty -type d -delete
+fi
+exit
