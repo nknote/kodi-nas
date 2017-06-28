@@ -1,0 +1,48 @@
+#!/bin/bash
+# Change paths for mount and log file & create mountchek file.
+# Add script to crontb by typig crontb -e and pasting the line bellow (without # in front )
+# * * * * *  /home/eddy/scripts/rclone-mount.cron >/dev/null 2>&1
+# Make script executable with: chmod a+x /home/eddy/scripts/rclone-mount.cron
+
+logfile="/home/kodi/logs/rclone-mount.log"
+
+if pidof -o %PPID -x "rclone-mount.cron"; then
+   echo "$(date "+%d.%m.%Y %T") EXIT: rclone-mount.cron already running."
+   exit 1
+fi
+
+if [[ -f "/mnt/eddy/Group/Readme.docx" ]]; then
+   echo "$(date "+%d.%m.%Y %T") INFO: Check successful, eddy mounted." | tee -a "$logfile"
+   exit
+else
+   echo "$(date "+%d.%m.%Y %T") ERROR: Drive not mounted, remount in progress." | tee -a "$logfile"
+   # Unmount before remounting 
+   fusermount -uz /mnt/eddy/
+   fusermount -uz /mnt/gdremote
+   /usr/sbin/rclone mount \
+	--read-only \
+        --allow-other \
+	--uid 1000 --gid 1000 --umask 0 \
+	--acd-templink-threshold 0 \
+	--stats 1s \
+	--buffer-size 1G \
+	--timeout 5s \
+	--contimeout 5s \
+	--log-file=$logfile \
+        eddy: /mnt/gdremote/ &
+   sleep 10
+
+   /usr/bin/unionfs-fuse -o allow_other -o cow -o direct_io -o auto_cache -o sync_read -o uid=1000 -o gid=1000 /mnt/gdlocal=RW:/mnt/gdremote=RO /mnt/eddy
+   sleep 10
+
+   if [[ -f "/mnt/eddy/Group/Readme.docx" ]]; then
+      echo "$(date "+%d.%m.%Y %T") INFO: Remount successful." | tee -a "$logfile"
+      echo "Restarting tvheadend"
+      /etc/init.d/tvheadend restart
+      echo "Restarting kodi"
+      systemctl restart kodi
+   else
+      echo "$(date "+%d.%m.%Y %T") CRITICAL: Remount failed." | tee -a "$logfile"
+   fi
+fi
+exit
